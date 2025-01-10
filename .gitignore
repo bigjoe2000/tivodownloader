@@ -1,0 +1,12 @@
+/target
+/dist
+/release
+/bin
+/.gradle
+/.settings
+/.vscode
+/config.ini
+/css
+/cdata.*
+/*.jar
+/.mvn
