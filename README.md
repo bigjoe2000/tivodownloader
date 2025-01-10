@@ -13,8 +13,8 @@ In terminal, type `./run.sh`
 
 Note that this will rebuild the image every time, but with docker's caching mechanism, it won't take long. You can always modify this to skip the docker build and just put in the image name.
 
-Thanks to the good people at the (https://sourceforge.net/p/kmttg/wiki/config_Programs/)[kmttg project] for the inspiration and Http.java which I totally stole.
+Thanks to the good people at the [kmttg project](https://sourceforge.net/p/kmttg/wiki/config_Programs/) for the inspiration and Http.java which I totally stole.
 
 
 Future work for this project:
-1. See the github (https://github.com/bigjoe2000/tivodownloader/issues)[issues] for more
+1. See the github [issues page](https://github.com/bigjoe2000/tivodownloader/issues) for more
