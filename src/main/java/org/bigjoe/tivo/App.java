@@ -109,7 +109,7 @@ public class App {
             System.out.println("Skipping unavailable:" + item.programId + " " + item.title + " " + item.episodeTitle);
             return true;
         }
-        System.out.println("Processing:" + item.programId);
+        System.out.println("Processing:" + item.programId + " " + item.title + " " + item.episodeTitle);
         String filePrefix = item.programId;
         String fqFilePrefix = outputDir + "/" + filePrefix;
 
