@@ -181,9 +181,7 @@ public class App {
                 if (!Http.download(item.contentLink + "&Format=video/x-tivo-mpeg-ts", "tivo", mak, tivoFile.getAbsolutePath(), true, null))
                     throw new Exception("Problem downloading");
             } catch (Exception e) {
-                if (tivoFile.exists())
-                    tivoFile.delete();
-                throw e;
+                deleteIfExists(tivoFile, e);
             }
             System.out.println("Done downloading");
         }
@@ -197,9 +195,7 @@ public class App {
                     throw new Exception("Could not decode file!");
                 }
             } catch (Exception e) {
-                if (tsFile.exists())
-                    tsFile.delete();
-                throw e;
+                deleteIfExists(tsFile, e);
             }
             System.out.println("Decoded");
         }
@@ -213,9 +209,7 @@ public class App {
                     throw new Exception("comskip returned bad value");
                 }
             } catch (Exception e) {
-                if (edlFile.exists())
-                    edlFile.delete();
-                throw e;
+                deleteIfExists(edlFile, e);
             }
             System.out.println("Detected");
         }
@@ -229,9 +223,7 @@ public class App {
                     throw new Exception("Conversion failed!");
                 }
             } catch (Exception e) {
-                if (uncutFile.exists()) 
-                    uncutFile.delete();
-                throw e;
+                deleteIfExists(uncutFile, e);
             }
         }
 
@@ -242,9 +234,7 @@ public class App {
             try {
                 generateConcatFile(edlFile.getAbsolutePath(), uncutFile.getName(), cutsFile.getAbsolutePath());
             } catch (Exception e) {
-                if (cutsFile.exists())
-                    cutsFile.delete();
-                throw e;
+                deleteIfExists(cutsFile, e);
             }
             System.out.println("Generated");
         }
@@ -257,18 +247,28 @@ public class App {
                 if (!removeCommercials(item.programId + ".cutfile", finalFile.toString()))
                     throw new Exception("Failed to remove commercials");
             } catch (Exception e) {
-                if (finalFile.exists()) {
-                    finalFile.delete();
-                }
-                throw e;
+                deleteIfExists(finalFile, e);
             }
         }
 
-        if (tivoFile.exists())
-            tivoFile.delete();
-        if (uncutFile.exists())
-            uncutFile.delete();
+        deleteIfExists(tivoFile);
+        deleteIfExists(uncutFile);
         return true;
+    }
+
+    public void deleteIfExists(File f) throws Exception {
+        deleteIfExists(f, null);
+    }
+
+    public void deleteIfExists(File f, Exception e) throws Exception {
+        if (f.exists()) {
+            if (f.delete()) {
+                System.out.println("Could not delete file:" + f.getAbsolutePath());
+            }
+        }
+        if (e != null) {
+            throw e;
+        }
     }
 
     /**
