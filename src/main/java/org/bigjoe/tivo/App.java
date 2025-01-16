@@ -109,7 +109,7 @@ public class App {
             System.out.println("Skipping unavailable:" + item.raw);
             return true;
         }
-        System.out.println("Downloading:" + item.programId);
+        System.out.println("Processing:" + item.programId);
         String filePrefix = item.programId;
         String fqFilePrefix = outputDir + "/" + filePrefix;
 
@@ -173,7 +173,7 @@ public class App {
             bw.close();
         }
 
-        if (createTivoFile) {
+        if (!createTivoFile) {
             System.out.println("Skipping downloading... existing file");
         } else {
             System.out.println("Creating file at:" + tivoFile.getAbsolutePath());
@@ -188,7 +188,7 @@ public class App {
             System.out.println("Done downloading");
         }
 
-        if (createTsFile) {
+        if (!createTsFile) {
             System.out.println("Skipping decoding... existing file");
         } else {
             System.out.println("Decoding");
@@ -202,7 +202,7 @@ public class App {
             System.out.println("Decoded");
         }
 
-        if (createEdlFile) {
+        if (!createEdlFile) {
             System.out.println("Skipping comskip... existing file");
         } else {
             System.out.println("Detecting commercials");
@@ -216,7 +216,7 @@ public class App {
             System.out.println("Detected");
         }
 
-        if (createUncutFile) {
+        if (!createUncutFile) {
             System.out.println("Skipping conversion... existing file:" + uncutFile.getAbsolutePath());
         } else {
             System.out.println("Converting to mp4");
@@ -229,7 +229,7 @@ public class App {
             }
         }
 
-        if (createCutsFile) {
+        if (!createCutsFile) {
             System.out.println("Skipping cutFile creation... existing file:" + cutsFile.getAbsolutePath());
         } else {
             System.out.println("Generating cut file");
@@ -241,7 +241,7 @@ public class App {
             System.out.println("Generated");
         }
 
-        if (createFinalFile) {
+        if (!createFinalFile) {
             System.out.println("Skipping edited... existing file:" + finalFile.toString());
         } else {
             System.out.println("Removing cuts");
