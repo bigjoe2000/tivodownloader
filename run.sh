@@ -8,5 +8,5 @@ DELETE_FROM_TIVO=false # Whether or not to delete the files from the TiVo after 
 mkdir -p $OUTPUT_DIR
 mkdir -p $M2_CACHE_DIR
 
-docker run -it -v $OUTPUT_DIR:/downloads -v $M2_CACHE_DIR:/root/.m2 -u$(docker build -q .) -Dexec.args="$TIVO_IP $MAK $LIMIT $DELETE_FROM_TIVO"
+docker run -it -v $OUTPUT_DIR:/downloads -v $M2_CACHE_DIR:/root/.m2 $(docker build -q .) -Dexec.args="$TIVO_IP $MAK $LIMIT $DELETE_FROM_TIVO"
 #docker run -it -v $OUTPUT_DIR:/downloads -v $M2_CACHE_DIR:/root/.m2 --entrypoint /usr/bin/bash $(docker build -q .) 
