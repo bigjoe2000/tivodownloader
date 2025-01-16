@@ -106,7 +106,7 @@ public class App {
      */
     public boolean processItem(Item item) throws Exception {
         if (!item.available) {
-            System.out.println("Skipping unavailable:" + item.raw);
+            System.out.println("Skipping unavailable:" + item.programId + " " + item.title + " " + item.episodeTitle);
             return true;
         }
         System.out.println("Processing:" + item.programId);
@@ -136,6 +136,7 @@ public class App {
         boolean createTivoFile = false;
 
         if (finalFile.exists()) {
+            System.out.println("... already downloaded and converted");
             return true;
         } else if (cutsFile.exists()) {
             createFinalFile = true;
