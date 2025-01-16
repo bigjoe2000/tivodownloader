@@ -15,6 +15,8 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -262,9 +264,7 @@ public class App {
 
     public void deleteIfExists(File f, Exception e) throws Exception {
         if (f.exists()) {
-            if (f.delete()) {
-                System.out.println("Could not delete file:" + f.getAbsolutePath());
-            }
+            Files.delete(Paths.get(f.getAbsolutePath()));
         }
         if (e != null) {
             throw e;
