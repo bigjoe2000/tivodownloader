@@ -43,9 +43,11 @@ public class App {
 
     String mak;
     String ip;
-    String outputDir;
+    String outputDir = "/tmp/";
     int limit = 5;
     boolean skipDelete = true;
+
+    String ffmpegLocation = "/usr/bin/ffmpeg";
 
     public static void main(String[] args) throws IOException, InterruptedException, Exception {
         if (args != null && args.length < 2) {
@@ -83,6 +85,23 @@ public class App {
         }
     }
 
+    /**
+     * Once this is done we want to have the following files left over:
+     * 
+     * 1. mp4 containing the final program without commercials
+     * 2. ts file containing the decoded program with commercials
+     * 3. edl file which is comskip's analysis
+     * 4. meta file which contains all program metadata
+     * 
+     * Even though the ts takes up a lot of space, it might be worthwhile to store it for later deletion. This is just 
+     * in case we spot errors and want to fix them.
+     * 
+     * If we process successfully, we'll delete the tivo and uncut mp4 file to save space
+     * 
+     * @param item
+     * @return
+     * @throws Exception
+     */
     public boolean processItem(Item item) throws Exception {
         if (!item.available) {
             System.out.println("Skipping unavailable:" + item.raw);
@@ -92,84 +111,163 @@ public class App {
         String filePrefix = item.programId;
         String fqFilePrefix = outputDir + "/" + filePrefix;
 
-        String metadataFile = fqFilePrefix + ".meta";
-        File fMeta = new File(metadataFile);
-        if (!fMeta.exists()) {
-            fMeta.createNewFile();
-            BufferedWriter bw = new BufferedWriter(new FileWriter(fMeta));
+        // contains show metadata
+        File metaFile = new File(fqFilePrefix + ".meta");
+        // raw file downloaded from TiVo
+        File tivoFile = new File(fqFilePrefix + ".tivo");
+        // decoded file
+        File tsFile = new File(fqFilePrefix + ".ts");
+        // comskip's analysis of commercial breaks
+        File edlFile = new File(fqFilePrefix + ".edl");
+        // an mp4 of the decoded file
+        File uncutFile = new File(fqFilePrefix + ".uncut.mp4");
+        // the cuts formatted so they are usable by ffmpeg
+        File cutsFile = new File(fqFilePrefix + ".cutfile");
+        // the final commercial free mp4 of the program
+        File finalFile = new File(outputDir + "/" + item.title + "_" + item.episodeTitle + "_" + item.programId + ".mp4");
+
+        boolean createFinalFile = false;
+        boolean createCutsFile = false;
+        boolean createUncutFile = false;
+        boolean createEdlFile = false;
+        boolean createTsFile = false;
+        boolean createTivoFile = false;
+
+        if (finalFile.exists()) {
+            return true;
+        } else if (cutsFile.exists()) {
+            createFinalFile = true;
+        } else if (uncutFile.exists()) {
+            createCutsFile = true;
+            createFinalFile = true;
+        } else if (edlFile.exists()) {
+            createUncutFile = true;
+            createCutsFile = true;
+            createFinalFile = true;
+        } else if (tsFile.exists()) {
+            createEdlFile = true;
+            createUncutFile = true;
+            createCutsFile = true;
+            createFinalFile = true;
+        } else if (tivoFile.exists()) {
+            createTsFile = true;
+            createEdlFile = true;
+            createUncutFile = true;
+            createCutsFile = true;
+            createFinalFile = true;
+        } else {
+            createTivoFile = true;
+            createTsFile = true;
+            createEdlFile = true;
+            createUncutFile = true;
+            createCutsFile = true;
+            createFinalFile = true;
+        }
+        
+        if (!metaFile.exists()) {
+            metaFile.createNewFile();
+            BufferedWriter bw = new BufferedWriter(new FileWriter(metaFile));
             bw.write(item.raw);
             bw.close();
         }
 
-        String inputFile = fqFilePrefix + ".tivo";
-        if (new File(inputFile).exists()) {
+        if (createTivoFile) {
             System.out.println("Skipping downloading... existing file");
         } else {
-            System.out.println("Creating file at:" + inputFile);
-            new File(inputFile).createNewFile();
-            System.out.println("Downloading from tivo");
-            Http.download(item.contentLink + "&Format=video/x-tivo-mpeg-ts", "tivo", mak, inputFile, true, null);
+            System.out.println("Creating file at:" + tivoFile.getAbsolutePath());
+            try {
+                tivoFile.createNewFile();
+                System.out.println("Downloading from tivo");
+                if (!Http.download(item.contentLink + "&Format=video/x-tivo-mpeg-ts", "tivo", mak, tivoFile.getAbsolutePath(), true, null))
+                    throw new Exception("Problem downloading");
+            } catch (Exception e) {
+                if (tivoFile.exists())
+                    tivoFile.delete();
+                throw e;
+            }
             System.out.println("Done downloading");
         }
 
-        String tsFile = fqFilePrefix + ".ts";
-        if (new File(tsFile).exists()) {
+        if (createTsFile) {
             System.out.println("Skipping decoding... existing file");
         } else {
             System.out.println("Decoding");
-            System.out.println("Decoded: " + decodeFile(inputFile, mak, tsFile));
+            try {
+                if (!decodeFile(tivoFile.getAbsolutePath(), mak, tsFile.getAbsolutePath())) {
+                    throw new Exception("Could not decode file!");
+                }
+            } catch (Exception e) {
+                if (tsFile.exists())
+                    tsFile.delete();
+                throw e;
+            }
+            System.out.println("Decoded");
         }
 
-        String edlFile = fqFilePrefix + ".edl";
-        if (new File(edlFile).exists()) {
+        if (createEdlFile) {
             System.out.println("Skipping comskip... existing file");
         } else {
             System.out.println("Detecting commercials");
-            runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", tsFile});
+            try {
+                if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", tsFile.getAbsolutePath()})) {
+                    throw new Exception("comskip returned bad value");
+                }
+            } catch (Exception e) {
+                if (edlFile.exists())
+                    edlFile.delete();
+                throw e;
+            }
             System.out.println("Detected");
         }
 
-        String uncutMp4File = fqFilePrefix + ".uncut.mp4";
-        if (new File(uncutMp4File).exists()) {
-            System.out.println("Skipping conversion... existing file:" + uncutMp4File);
+        if (createUncutFile) {
+            System.out.println("Skipping conversion... existing file:" + uncutFile.getAbsolutePath());
         } else {
             System.out.println("Converting to mp4");
-            if (generateMp4(filePrefix + ".ts", uncutMp4File)) {
-                System.out.println("Converted successfully.");
-           } else {
-                System.out.println("FAILURE DETECTED.. removing file and skipping");
-                if (new File(uncutMp4File).exists()) {
-                    new File(uncutMp4File).delete();
+            try {
+                if (!generateMp4(tsFile.getName(), uncutFile.getAbsolutePath())) {
+                    throw new Exception("Conversion failed!");
                 }
-                return false;
+            } catch (Exception e) {
+                if (uncutFile.exists()) 
+                    uncutFile.delete();
+                throw e;
             }
         }
 
-        String cutFile = fqFilePrefix + ".cutfile";
-        if (new File(cutFile).exists()) {
-            System.out.println("Skipping cutFile creation... existing file:" + cutFile);
+        if (createCutsFile) {
+            System.out.println("Skipping cutFile creation... existing file:" + cutsFile.getAbsolutePath());
         } else {
             System.out.println("Generating cut file");
-            generateConcatFile(edlFile, item.programId + ".uncut.mp4", cutFile);
+            try {
+                generateConcatFile(edlFile.getAbsolutePath(), uncutFile.getName(), cutsFile.getAbsolutePath());
+            } catch (Exception e) {
+                if (cutsFile.exists())
+                    cutsFile.delete();
+                throw e;
+            }
             System.out.println("Generated");
         }
 
-        String editedFile = outputDir + "/" + item.title + "_" + item.episodeTitle + "_" + item.programId + ".mp4";
-        if (new File(editedFile).exists()) {
-            System.out.println("Skipping edited... existing file:" + editedFile);
+        if (createFinalFile) {
+            System.out.println("Skipping edited... existing file:" + finalFile.toString());
         } else {
             System.out.println("Removing cuts");
-            if (removeCommercials(item.programId + ".cutfile", editedFile)) {
-                System.out.println("Cuts removed");
-           } else {
-                System.out.println("FAILURE DETECTED.. removing file and skipping");
-                if (new File(editedFile).exists()) {
-                    new File(editedFile).delete();
+            try {
+                if (!removeCommercials(item.programId + ".cutfile", finalFile.toString()))
+                    throw new Exception("Failed to remove commercials");
+            } catch (Exception e) {
+                if (finalFile.exists()) {
+                    finalFile.delete();
                 }
-                return false;
+                throw e;
             }
         }
 
+        if (tivoFile.exists())
+            tivoFile.delete();
+        if (uncutFile.exists())
+            uncutFile.delete();
         return true;
     }
 
@@ -226,7 +324,7 @@ public class App {
     }
 
     /**
-     * @param edlFile The comskip output file. This MUST be a local filename
+     * @param edlFile The comskip output file.
      * @param inputFile The uncut mp4 file. This MUST be a local filename
      * @param outputFile Where to write the results. This can be a fq filename
      * @throws IOException
@@ -268,7 +366,7 @@ public class App {
      */
     public boolean generateMp4(String inputFile, String outFile) throws Exception {
         return runSynchronous(new String[] {
-            "/usr/bin/ffmpeg",
+            ffmpegLocation,
             "-y",
             "-i",
             inputFile,
@@ -281,7 +379,7 @@ public class App {
 
     public boolean removeCommercials(String inputFile, String outputFile) throws Exception {
         return runSynchronous(new String[] {
-            "/usr/bin/ffmpeg",
+            ffmpegLocation,
             "-y",
             "-f",
             "concat",
