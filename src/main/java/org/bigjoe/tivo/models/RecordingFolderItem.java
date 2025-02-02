@@ -42,7 +42,7 @@ public class RecordingFolderItem extends TivoObject {
 	 * @return
 	 */
 	public String getIdentifier() {
-		return recordingId.split(".")[1];
+		return recordingId.split("\\.")[1];
 	}
 
 /** 
