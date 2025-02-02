@@ -35,8 +35,14 @@ public class RecordingFolderItem extends TivoObject {
 			+ mfsId;
 	}
 
-	public String getEpisodeCode() {
-		return recordingList.recording.get(0).partnerCollectionId;
+	/**
+	 * Return a string we can use to uniquely identify the recording
+	 * 
+	 * Recording id looks like: tivo:rc.4481929
+	 * @return
+	 */
+	public String getIdentifier() {
+		return recordingId.split(".")[1];
 	}
 
 /** 

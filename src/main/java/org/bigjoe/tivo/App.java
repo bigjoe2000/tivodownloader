@@ -114,12 +114,16 @@ public class App {
           * @throws Exception
           */
          public boolean processItem(RecordingFolderItem item) throws Exception {
-             if (item.recordingTransferProhibited) {
-                 log.info("Skipping prohibited:" + item.title + " " + item.getEpisodeCode());
+            log.info("Processing:" + item.title + " " + item.getIdentifier());
+            if (item.recordingTransferProhibited) {
+                 log.info("Skipping prohibited");
                  return true;
              }
-             log.info("Processing:" + item.title + " " + item.getEpisodeCode());
-             String filePrefix = item.getEpisodeCode();
+             if ("inProgressRecording".equals(item.recordingStatusType)) {
+                log.info("Skipping in progress recoding");
+                return true;
+            }
+             String filePrefix = item.getIdentifier();
              String fqFilePrefix = outputDir + "/" + filePrefix;
      
              // contains show metadata
@@ -135,7 +139,7 @@ public class App {
              // the cuts formatted so they are usable by ffmpeg
              File cutsFile = new File(fqFilePrefix + ".cutfile");
              // the final commercial free mp4 of the program
-             File finalFile = new File(outputDir + "/" + item.title + "_" + item.getEpisodeCode() + ".mp4");
+             File finalFile = new File(outputDir + "/" + item.title + "_" + item.getIdentifier() + ".mp4");
      
              boolean createFinalFile = false;
              boolean createCutsFile = false;
@@ -190,8 +194,9 @@ public class App {
                  log.info("Creating file at:" + tivoFile.getAbsolutePath());
                  try {
                      tivoFile.createNewFile();
-                     log.info("Downloading from tivo");
-                     if (!Http.download(item.getDownloadUrl(ip) + "&Format=video/x-tivo-mpeg-ts", "tivo", mak, tivoFile.getAbsolutePath(), true, null))
+                     String url = item.getDownloadUrl(ip) + "&Format=video/x-tivo-mpeg-ts";
+                     log.info("Downloading from tivo:" + url);
+                     if (!Http.download(url, "tivo", mak, tivoFile.getAbsolutePath(), true, null))
                          throw new Exception("Problem downloading");
                  } catch (Exception e) {
                      deleteIfExists(tivoFile, e);
@@ -258,7 +263,7 @@ public class App {
              } else {
                  log.info("Removing cuts");
                  try {
-                     if (!removeCommercials(item.getEpisodeCode() + ".cutfile", finalFile.toString()))
+                     if (!removeCommercials(item.getIdentifier() + ".cutfile", finalFile.toString()))
                     throw new Exception("Failed to remove commercials");
             } catch (Exception e) {
                 deleteIfExists(finalFile, e);
