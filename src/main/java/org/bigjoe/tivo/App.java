@@ -237,7 +237,9 @@ public class App {
                 log.info("Detecting commercials");
                 try {
                    String filePath = uncutFile.exists() ? uncutFile.getAbsolutePath() : tsFile.getAbsolutePath();
-                    if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", filePath})) {
+                   String edlPrefix = edlFile.getAbsolutePath();
+                   edlPrefix = edlPrefix.substring(0, edlPrefix.length() - 4); //remove .edl from end of filename
+                    if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", "--output=/downloads", "--output-filename=" + item.getIdentifier(), filePath})) {
                         throw new Exception("comskip returned bad value");
                     }
                 } catch (Exception e) {
