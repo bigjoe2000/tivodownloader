@@ -22,6 +22,7 @@ public class AppTest {
     public AppTest() {
         app = new App(null, null, 5, true);
         app.ffmpegLocation = "/opt/homebrew/bin/ffmpeg";
+        app.outputDir = "/tmp/";
 
     }
 

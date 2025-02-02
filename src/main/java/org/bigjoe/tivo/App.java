@@ -36,7 +36,7 @@ public class App {
 
     String mak;
     String ip;
-    String outputDir = "/tmp/";
+    String outputDir = "/downloads/";
     int limit = 5;
     boolean skipDelete = true;
 
