@@ -264,7 +264,7 @@ public class App {
         }
 
         deleteIfExists(tivoFile);
-        deleteIfExists(uncutFile);
+        deleteIfExists(tsFile);
         if (skipDelete) {
             log.info("Deleting show from TiVo");
             try {
