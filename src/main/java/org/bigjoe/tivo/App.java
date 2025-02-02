@@ -149,29 +149,30 @@ public class App {
                  return true;
              } else if (cutsFile.exists()) {
                  createFinalFile = true;
-             } else if (uncutFile.exists()) {
-                 createCutsFile = true;
-                 createFinalFile = true;
              } else if (edlFile.exists()) {
-                 createUncutFile = true;
-                 createCutsFile = true;
-                 createFinalFile = true;
+                createUncutFile = !uncutFile.exists(); // we switched this, so only create uncut file if it doesn't exist
+                createCutsFile = true;
+                createFinalFile = true;
+             } else if (uncutFile.exists()) {
+                createEdlFile = !edlFile.exists();
+                createCutsFile = true;
+                createFinalFile = true;
              } else if (tsFile.exists()) {
-                 createEdlFile = true;
                  createUncutFile = true;
+                 createEdlFile = true;
                  createCutsFile = true;
                  createFinalFile = true;
              } else if (tivoFile.exists()) {
                  createTsFile = true;
-                 createEdlFile = true;
                  createUncutFile = true;
+                 createEdlFile = true;
                  createCutsFile = true;
                  createFinalFile = true;
              } else {
                  createTivoFile = true;
                  createTsFile = true;
-                 createEdlFile = true;
                  createUncutFile = true;
+                 createEdlFile = true;
                  createCutsFile = true;
                  createFinalFile = true;
              }
@@ -212,20 +213,6 @@ public class App {
                  log.info("Decoded");
              }
      
-             if (!createEdlFile) {
-                 log.info("Skipping comskip... existing file");
-             } else {
-                 log.info("Detecting commercials");
-                 try {
-                     if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", tsFile.getAbsolutePath()})) {
-                         throw new Exception("comskip returned bad value");
-                     }
-                 } catch (Exception e) {
-                     deleteIfExists(edlFile, e);
-                 }
-                 log.info("Detected");
-             }
-     
              if (!createUncutFile) {
                  log.info("Skipping conversion... existing file:" + uncutFile.getAbsolutePath());
              } else {
@@ -239,6 +226,21 @@ public class App {
                  }
              }
      
+             if (!createEdlFile) {
+                log.info("Skipping comskip... existing file");
+            } else {
+                log.info("Detecting commercials");
+                try {
+                   String filePath = uncutFile.exists() ? uncutFile.getAbsolutePath() : tsFile.getAbsolutePath();
+                    if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", filePath})) {
+                        throw new Exception("comskip returned bad value");
+                    }
+                } catch (Exception e) {
+                    deleteIfExists(edlFile, e);
+                }
+                log.info("Detected");
+            }
+    
              if (!createCutsFile) {
                  log.info("Skipping cutFile creation... existing file:" + cutsFile.getAbsolutePath());
              } else {
@@ -264,7 +266,9 @@ public class App {
         }
 
         deleteIfExists(tivoFile);
-        deleteIfExists(tsFile);
+        if (uncutFile.exists()) {
+            deleteIfExists(tsFile);
+        }
         if (skipDelete) {
             log.info("Deleting show from TiVo");
             try {
