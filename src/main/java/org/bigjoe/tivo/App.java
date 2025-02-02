@@ -10,24 +10,14 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.logging.Logger;
 
-import org.bigjoe.tivo.nowplaying.Item;
-import org.bigjoe.tivo.nowplaying.Page;
+import org.bigjoe.tivo.models.RecordingFolderItem;
 import org.bigjoe.tivo.util.Http;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
+import org.bigjoe.tivo.util.TiVoRPC;
 
 import net.straylightlabs.tivolibre.TivoDecoder;
 
@@ -42,6 +32,7 @@ import net.straylightlabs.tivolibre.TivoDecoder;
 
 */
 public class App {
+	private static Logger log = Logger.getLogger(App.class.getSimpleName());
 
     String mak;
     String ip;
@@ -50,6 +41,7 @@ public class App {
     boolean skipDelete = true;
 
     String ffmpegLocation = "/usr/bin/ffmpeg";
+
 
     public static void main(String[] args) throws IOException, InterruptedException, Exception {
         if (args != null && args.length < 2) {
@@ -60,24 +52,27 @@ public class App {
             return;
         }
 
-        App app = new App();
-        app.ip = args[0];
-        app.mak = args[1];
-        app.outputDir = "/downloads";
-
+        int limit = 5;
         if (args.length >= 3) {
-            app.limit = Integer.valueOf(args[2]);
+            limit = Integer.valueOf(args[2]);
         }
+        boolean skipDelete = true;
         if (args.length >= 4) {
-            app.skipDelete = !Boolean.valueOf(args[3]); // only delete from tivo if argument is "true"
+            skipDelete = !Boolean.valueOf(args[3]); // only delete from tivo if argument is "true"
         }
-        
-        System.out.println("IpAddress:" + app.ip + " mak:" + app.mak + " outputDir:" + app.outputDir);
-        System.out.println("Gathering Now Playing Items");
-        List<Item> items = app.gatherAllItems();
-        System.out.println("Done gathering items:" + items.size());
 
-        for (Item item : items) {
+        App app = new App(args[0], args[1], limit, skipDelete);
+
+        
+        log.info("IpAddress:" + app.ip + " mak:" + app.mak + " outputDir:" + app.outputDir);
+        log.info("Gathering Now Playing Items");
+        
+        TiVoRPC rpc = app.newRpc();
+        List<RecordingFolderItem> items = rpc.fetchShows(limit);
+
+        log.info("Done gathering items:" + items.size());
+
+        for (RecordingFolderItem item : items) {
 
             app.processItem(item);
             /**
@@ -85,6 +80,20 @@ public class App {
              * https://github.com/lart2150/kmttg/blob/master/src/com/tivo/kmttg/util/file.java#L240
              */
         }
+    }
+
+    //String IP, String mak, String programDir, String cdata, boolean oldSchema, boolean debug
+    public App(String ip, String mak, int limit, boolean skipDelete) {
+        this.ip = ip;
+        this.mak = mak;
+        this.limit = limit;
+        this.skipDelete = skipDelete;
+
+        // Remove any java.security restrictions which can intefere with connecting to the tivo
+        java.security.Security.setProperty("jdk.tls.disabledAlgorithms", "");
+        java.security.Security.setProperty("jdk.jar.disabledAlgorithms", "");
+        java.security.Security.setProperty("jdk.certpath.disabledAlgorithms", "");
+
     }
 
     /**
@@ -101,153 +110,153 @@ public class App {
      * If we process successfully, we'll delete the tivo and uncut mp4 file to save space
      * 
      * @param item
-     * @return
-     * @throws Exception
-     */
-    public boolean processItem(Item item) throws Exception {
-        if (!item.available) {
-            System.out.println("Skipping unavailable:" + item.programId + " " + item.title + " " + item.episodeTitle);
-            return true;
-        }
-        System.out.println("Processing:" + item.programId + " " + item.title + " " + item.episodeTitle);
-        String filePrefix = item.programId;
-        String fqFilePrefix = outputDir + "/" + filePrefix;
-
-        // contains show metadata
-        File metaFile = new File(fqFilePrefix + ".meta");
-        // raw file downloaded from TiVo
-        File tivoFile = new File(fqFilePrefix + ".tivo");
-        // decoded file
-        File tsFile = new File(fqFilePrefix + ".ts");
-        // comskip's analysis of commercial breaks
-        File edlFile = new File(fqFilePrefix + ".edl");
-        // an mp4 of the decoded file
-        File uncutFile = new File(fqFilePrefix + ".uncut.mp4");
-        // the cuts formatted so they are usable by ffmpeg
-        File cutsFile = new File(fqFilePrefix + ".cutfile");
-        // the final commercial free mp4 of the program
-        File finalFile = new File(outputDir + "/" + item.title + "_" + item.episodeTitle + "_" + item.programId + ".mp4");
-
-        boolean createFinalFile = false;
-        boolean createCutsFile = false;
-        boolean createUncutFile = false;
-        boolean createEdlFile = false;
-        boolean createTsFile = false;
-        boolean createTivoFile = false;
-
-        if (finalFile.exists()) {
-            System.out.println("... already downloaded and converted");
-            return true;
-        } else if (cutsFile.exists()) {
-            createFinalFile = true;
-        } else if (uncutFile.exists()) {
-            createCutsFile = true;
-            createFinalFile = true;
-        } else if (edlFile.exists()) {
-            createUncutFile = true;
-            createCutsFile = true;
-            createFinalFile = true;
-        } else if (tsFile.exists()) {
-            createEdlFile = true;
-            createUncutFile = true;
-            createCutsFile = true;
-            createFinalFile = true;
-        } else if (tivoFile.exists()) {
-            createTsFile = true;
-            createEdlFile = true;
-            createUncutFile = true;
-            createCutsFile = true;
-            createFinalFile = true;
-        } else {
-            createTivoFile = true;
-            createTsFile = true;
-            createEdlFile = true;
-            createUncutFile = true;
-            createCutsFile = true;
-            createFinalFile = true;
-        }
-        
-        if (!metaFile.exists()) {
-            metaFile.createNewFile();
-            BufferedWriter bw = new BufferedWriter(new FileWriter(metaFile));
-            bw.write(item.raw);
-            bw.close();
-        }
-
-        if (!createTivoFile) {
-            System.out.println("Skipping downloading... existing file");
-        } else {
-            System.out.println("Creating file at:" + tivoFile.getAbsolutePath());
-            try {
-                tivoFile.createNewFile();
-                System.out.println("Downloading from tivo");
-                if (!Http.download(item.contentLink + "&Format=video/x-tivo-mpeg-ts", "tivo", mak, tivoFile.getAbsolutePath(), true, null))
-                    throw new Exception("Problem downloading");
-            } catch (Exception e) {
-                deleteIfExists(tivoFile, e);
-            }
-            System.out.println("Done downloading");
-        }
-
-        if (!createTsFile) {
-            System.out.println("Skipping decoding... existing file");
-        } else {
-            System.out.println("Decoding");
-            try {
-                if (!decodeFile(tivoFile.getAbsolutePath(), mak, tsFile.getAbsolutePath())) {
-                    throw new Exception("Could not decode file!");
-                }
-            } catch (Exception e) {
-                deleteIfExists(tsFile, e);
-            }
-            System.out.println("Decoded");
-        }
-
-        if (!createEdlFile) {
-            System.out.println("Skipping comskip... existing file");
-        } else {
-            System.out.println("Detecting commercials");
-            try {
-                if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", tsFile.getAbsolutePath()})) {
-                    throw new Exception("comskip returned bad value");
-                }
-            } catch (Exception e) {
-                deleteIfExists(edlFile, e);
-            }
-            System.out.println("Detected");
-        }
-
-        if (!createUncutFile) {
-            System.out.println("Skipping conversion... existing file:" + uncutFile.getAbsolutePath());
-        } else {
-            System.out.println("Converting to mp4");
-            try {
-                if (!generateMp4(tsFile.getName(), uncutFile.getAbsolutePath())) {
-                    throw new Exception("Conversion failed!");
-                }
-            } catch (Exception e) {
-                deleteIfExists(uncutFile, e);
-            }
-        }
-
-        if (!createCutsFile) {
-            System.out.println("Skipping cutFile creation... existing file:" + cutsFile.getAbsolutePath());
-        } else {
-            System.out.println("Generating cut file");
-            try {
-                generateConcatFile(edlFile.getAbsolutePath(), uncutFile.getName(), cutsFile.getAbsolutePath());
-            } catch (Exception e) {
-                deleteIfExists(cutsFile, e);
-            }
-            System.out.println("Generated");
-        }
-
-        if (!createFinalFile) {
-            System.out.println("Skipping edited... existing file:" + finalFile.toString());
-        } else {
-            System.out.println("Removing cuts");
-            try {
-                if (!removeCommercials(item.programId + ".cutfile", finalFile.toString()))
+          * @return
+          * @throws Exception
+          */
+         public boolean processItem(RecordingFolderItem item) throws Exception {
+             if (item.recordingTransferProhibited) {
+                 log.info("Skipping prohibited:" + item.title + " " + item.getEpisodeCode());
+                 return true;
+             }
+             log.info("Processing:" + item.title + " " + item.getEpisodeCode());
+             String filePrefix = item.getEpisodeCode();
+             String fqFilePrefix = outputDir + "/" + filePrefix;
+     
+             // contains show metadata
+             File metaFile = new File(fqFilePrefix + ".meta");
+             // raw file downloaded from TiVo
+             File tivoFile = new File(fqFilePrefix + ".tivo");
+             // decoded file
+             File tsFile = new File(fqFilePrefix + ".ts");
+             // comskip's analysis of commercial breaks
+             File edlFile = new File(fqFilePrefix + ".edl");
+             // an mp4 of the decoded file
+             File uncutFile = new File(fqFilePrefix + ".uncut.mp4");
+             // the cuts formatted so they are usable by ffmpeg
+             File cutsFile = new File(fqFilePrefix + ".cutfile");
+             // the final commercial free mp4 of the program
+             File finalFile = new File(outputDir + "/" + item.title + "_" + item.getEpisodeCode() + ".mp4");
+     
+             boolean createFinalFile = false;
+             boolean createCutsFile = false;
+             boolean createUncutFile = false;
+             boolean createEdlFile = false;
+             boolean createTsFile = false;
+             boolean createTivoFile = false;
+     
+             if (finalFile.exists()) {
+                 log.info("... already downloaded and converted");
+                 return true;
+             } else if (cutsFile.exists()) {
+                 createFinalFile = true;
+             } else if (uncutFile.exists()) {
+                 createCutsFile = true;
+                 createFinalFile = true;
+             } else if (edlFile.exists()) {
+                 createUncutFile = true;
+                 createCutsFile = true;
+                 createFinalFile = true;
+             } else if (tsFile.exists()) {
+                 createEdlFile = true;
+                 createUncutFile = true;
+                 createCutsFile = true;
+                 createFinalFile = true;
+             } else if (tivoFile.exists()) {
+                 createTsFile = true;
+                 createEdlFile = true;
+                 createUncutFile = true;
+                 createCutsFile = true;
+                 createFinalFile = true;
+             } else {
+                 createTivoFile = true;
+                 createTsFile = true;
+                 createEdlFile = true;
+                 createUncutFile = true;
+                 createCutsFile = true;
+                 createFinalFile = true;
+             }
+             
+             if (!metaFile.exists()) {
+                 metaFile.createNewFile();
+                 BufferedWriter bw = new BufferedWriter(new FileWriter(metaFile));
+                 bw.write(TiVoRPC.GSON.toJson(item));
+                 bw.close();
+             }
+     
+             if (!createTivoFile) {
+                 log.info("Skipping downloading... existing file");
+             } else {
+                 log.info("Creating file at:" + tivoFile.getAbsolutePath());
+                 try {
+                     tivoFile.createNewFile();
+                     log.info("Downloading from tivo");
+                     if (!Http.download(item.getDownloadUrl(ip) + "&Format=video/x-tivo-mpeg-ts", "tivo", mak, tivoFile.getAbsolutePath(), true, null))
+                         throw new Exception("Problem downloading");
+                 } catch (Exception e) {
+                     deleteIfExists(tivoFile, e);
+                 }
+                 log.info("Done downloading");
+             }
+     
+             if (!createTsFile) {
+                 log.info("Skipping decoding... existing file");
+             } else {
+                 log.info("Decoding");
+                 try {
+                     if (!decodeFile(tivoFile.getAbsolutePath(), mak, tsFile.getAbsolutePath())) {
+                         throw new Exception("Could not decode file!");
+                     }
+                 } catch (Exception e) {
+                     deleteIfExists(tsFile, e);
+                 }
+                 log.info("Decoded");
+             }
+     
+             if (!createEdlFile) {
+                 log.info("Skipping comskip... existing file");
+             } else {
+                 log.info("Detecting commercials");
+                 try {
+                     if (!runSynchronous(new String[] {"/Comskip/comskip", "--ini", "/Comskip/comskip.ini", tsFile.getAbsolutePath()})) {
+                         throw new Exception("comskip returned bad value");
+                     }
+                 } catch (Exception e) {
+                     deleteIfExists(edlFile, e);
+                 }
+                 log.info("Detected");
+             }
+     
+             if (!createUncutFile) {
+                 log.info("Skipping conversion... existing file:" + uncutFile.getAbsolutePath());
+             } else {
+                 log.info("Converting to mp4");
+                 try {
+                     if (!generateMp4(tsFile.getName(), uncutFile.getAbsolutePath())) {
+                         throw new Exception("Conversion failed!");
+                     }
+                 } catch (Exception e) {
+                     deleteIfExists(uncutFile, e);
+                 }
+             }
+     
+             if (!createCutsFile) {
+                 log.info("Skipping cutFile creation... existing file:" + cutsFile.getAbsolutePath());
+             } else {
+                 log.info("Generating cut file");
+                 try {
+                     generateConcatFile(edlFile.getAbsolutePath(), uncutFile.getName(), cutsFile.getAbsolutePath());
+                 } catch (Exception e) {
+                     deleteIfExists(cutsFile, e);
+                 }
+                 log.info("Generated");
+             }
+     
+             if (!createFinalFile) {
+                 log.info("Skipping edited... existing file:" + finalFile.toString());
+             } else {
+                 log.info("Removing cuts");
+                 try {
+                     if (!removeCommercials(item.getEpisodeCode() + ".cutfile", finalFile.toString()))
                     throw new Exception("Failed to remove commercials");
             } catch (Exception e) {
                 deleteIfExists(finalFile, e);
@@ -256,6 +265,14 @@ public class App {
 
         deleteIfExists(tivoFile);
         deleteIfExists(uncutFile);
+        if (skipDelete) {
+            log.info("Deleting show from TiVo");
+            try {
+                newRpc().deleteShow(item.recordingId);
+            } catch (Exception e) {
+                log.warning("Error deleting show from TiVo:" + e.getMessage());
+            }
+        }
         return true;
     }
 
@@ -270,49 +287,6 @@ public class App {
         if (e != null) {
             throw e;
         }
-    }
-
-    /**
-     * Retrieve now playing items
-     * 
-     * @param limit stop when limit items are reached. 0 for unlimited
-     * @return
-     * @throws IOException
-     * @throws InterruptedException
-     * @throws Exception
-     */
-    public List<Item> gatherAllItems() throws IOException, InterruptedException, Exception {
-        List<Item> items = new ArrayList<>();
-        int pageSize = 32; // default page size;
-        if (pageSize > limit && limit > 0) {
-            pageSize = limit;
-        }
-
-        File f = File.createTempFile("tivo_np_", ".xml");
-        try {
-            Page p;
-            do {
-                String urlPrefix = "https://" + ip + "/TiVoConnect?Command=QueryContainer&Container=/NowPlaying&Recurse=Yes&ItemCount=" + pageSize + "&AnchorOffset=";
-    
-                Http.download(urlPrefix + items.size(), "tivo", mak, f.getAbsolutePath(), false, null);
-                p = parseNowPlaying(f);
-    
-                items.addAll(p.items);
-                System.out.println("Retrieved items:" + p.count + " total:" + p.total + " items:" + items.size());
-                if (limit > 0 && limit - items.size() > pageSize) {
-                    // We don't need a full page to hit limit, so reduce the page size
-                    pageSize = limit - items.size();
-                }
-            } while (p.count > 0 && p.total > items.size() && (limit == 0 || p.total < limit));    
-        } finally {
-            f.delete();
-        }
-        return items;
-    }
-
-    public Page parseNowPlaying(File f) throws IOException {
-        Document doc = Jsoup.parse(f);
-        return Page.parse(doc);
     }
 
     public boolean decodeFile(String inputFile, String mak, String outputFile) throws FileNotFoundException {
@@ -395,7 +369,7 @@ public class App {
     }
 
     public boolean runSynchronous(String[] command) throws Exception {
-        System.out.println("Running:" + String.join(" ", command));
+        log.info("Running:" + String.join(" ", command));
         Process process = Runtime.getRuntime().exec(command, null, new File(outputDir));
 
         // Consume standard output stream
@@ -403,7 +377,7 @@ public class App {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println(command[0] + ":stdout: " + line);
+                    log.info(command[0] + ":stdout: " + line);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -416,7 +390,7 @@ public class App {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println(command[0] + ":stderr: " + line);
+                    log.warning(command[0] + ":stderr: " + line);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -426,7 +400,7 @@ public class App {
 
         // Wait for the process to finish
         int returnValue = process.waitFor();
-        System.out.println(command[0] + " waitfor returned:" + returnValue);
+        log.info(command[0] + " waitfor returned:" + returnValue);
 
         stdOutThread.join();
         stdErrThread.join();
@@ -434,97 +408,8 @@ public class App {
         return returnValue == 0;
     }
 
-      public void deleteProgram(String programId) throws Exception {
-        // Construct the TiVo URL for deleting the program
-        String tivoUrl = String.format("https://%s/TiVoConnect?Command=Delete&Item=%s", ip, programId);
-
-        // Create a URL object
-        URL url = new URL(tivoUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-
-        // Set up the connection properties
-        connection.setRequestMethod("GET");
-        String auth = "tivo:" + mak;
-        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
-        connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
-
-        // Execute the request
-        int responseCode = connection.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_OK) {
-            System.out.println("Program deleted successfully.");
-            try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
-                String inputLine;
-                while ((inputLine = in.readLine()) != null) {
-                    System.out.println(inputLine);
-                }
-            }
-        } else {
-            System.out.println("Failed to delete program. HTTP Response Code: " + responseCode);
-        }
-    }
-
-    public static void TivoWebPlusDelete(String download_url) {
-      if (download_url == null) return;
-      int port = 8080;
-      Pattern p = Pattern.compile("http://(\\S+):.+&id=(.+)$");
-      Matcher m = p.matcher(download_url);
-      if (m.matches()) {
-         String ip = m.group(1);
-         final String id = m.group(2);
-         final String urlString = "http://" + ip + ":" + port + "/confirm/del/" + id;
-         System.out.println(">> Issuing TivoWebPlus show delete request: " + urlString);
-         try {
-            // Run the http request in separate thread so as not to hang up the main program
-            final URL url = new URI(urlString).toURL();
-            class AutoThread implements Runnable {
-               AutoThread() {}       
-               public void run () {
-                  int timeout = 10;
-                  try {
-                     String data = "u2=bnowshowing";
-                     data += "&sub=Delete";
-                     data += "&" + URLEncoder.encode("fsida(" + id + ")", "UTF-8")  + "=on";
-                     data += "&submit=Confirm_Delete";
-                     HttpURLConnection c = (HttpURLConnection) url.openConnection();
-                     c.setRequestMethod("POST");
-                     c.setReadTimeout(timeout*1000);
-                     c.setDoOutput(true);
-                     /* If authentication needed
-                     final String login ="oztivo";
-                     final String password ="moyekj";
-                     Authenticator.setDefault(new Authenticator() {
-                         protected PasswordAuthentication getPasswordAuthentication() {
-                             return new PasswordAuthentication (login, password.toCharArray());
-                         }
-                     });
-                     */
-                     c.connect();
-                     BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(c.getOutputStream()));
-                     bw.write(data);
-                     bw.flush();
-                     bw.close();
-                     String response = c.getResponseMessage();
-                     if (response.equals("OK")) {
-                        System.out.println(">> TivoWebPlus delete succeeded.");
-                     } else {
-                        System.out.println("TWP Delete: Received unexpected response for: " + urlString);
-                        System.out.println(response);
-                     }
-                  }
-                  catch (Exception e) {
-                    System.out.println("TWP Delete: connection failed: " + urlString);
-                    System.out.println(e.toString());
-                  }
-               }
-            }
-            AutoThread t = new AutoThread();
-            Thread thread = new Thread(t);
-            thread.start();
-         }
-         catch (Exception e) {
-            System.out.println("TWP Delete: connection failed: " + urlString);
-            System.out.println(e.toString());
-         }
-      }
+   public TiVoRPC newRpc() {
+       return new TiVoRPC(ip, mak);
    }
+
 }
