@@ -64,7 +64,7 @@ public class App {
         App app = new App(args[0], args[1], limit, skipDelete);
 
         
-        log.info("IpAddress:" + app.ip + " mak:" + app.mak + " outputDir:" + app.outputDir);
+        log.info("IpAddress:" + app.ip + " mak:" + app.mak + " limit:" + app.limit + " skipDelete:" + app.skipDelete);
         log.info("Gathering Now Playing Items");
         
         TiVoRPC rpc = app.newRpc();
