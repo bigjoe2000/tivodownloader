@@ -150,7 +150,15 @@ public class App {
      
              if (finalFile.exists()) {
                  log.info("... already downloaded and converted");
-                 return true;
+                 if (!skipDelete) {
+                    log.info("Deleting show from TiVo");
+                    try {
+                        newRpc().deleteShow(item.recordingId);
+                    } catch (Exception e) {
+                        log.warning("Error deleting show from TiVo:" + e.getMessage());
+                    }
+                }
+                return true;
              } else if (cutsFile.exists()) {
                  createFinalFile = true;
              } else if (edlFile.exists()) {
@@ -276,7 +284,7 @@ public class App {
         if (uncutFile.exists()) {
             deleteIfExists(tsFile);
         }
-        if (skipDelete) {
+        if (!skipDelete) {
             log.info("Deleting show from TiVo");
             try {
                 newRpc().deleteShow(item.recordingId);
